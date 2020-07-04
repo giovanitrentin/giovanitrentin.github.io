@@ -1,0 +1,796 @@
+﻿var base = window.location.href.replace(window.location.pathname, "");
+
+base = base + "/online";
+
+var configContagemRegressiva;
+var configContagemProgressiva;
+var configLimitouTempoDataHoraAtividade;
+var configNavegacaoRestritiva;
+var configTempo;
+var configTotalQuestoes;
+var configUltimaQuestaoNaoRespondida;
+var configTempoSegundos;
+var configTotalSegundosUtilizados;
+var configIniciouAvaliacao;
+var mostrarAvisoTempo = true;
+var mostrarAvisoAvaliacaoRestritiva = true;
+var configMostrarFeedback;
+var configFinalizouAvaliacao;
+var timerGlobal = new Timer();
+var configAutoSaveQuestaoDiscursiva;
+var configRedacaoPrimeiro;
+var configMensagemLimiteDeTempo;
+
+$(function () {
+  $("input.flat").iCheck({
+    checkboxClass: "icheckbox_flat-green",
+  });
+  configFinalizouAvaliacao = $("#configFinalizouAvaliacao").val();
+
+  if (configFinalizouAvaliacao == "true") {
+    $("#avaliacao").load(base + "/aplicacao/avaliacao", function () {
+      inicializarAvaliacao(0);
+    });
+  }
+});
+
+function comecar(data) {
+  $("#avaliacao").html(data);
+  inicializarAvaliacao(0);
+}
+
+function inicializarAvaliacao(tipoFinalizacao) {
+  $("#instrucoes").hide();
+
+  $("input.flat").iCheck({
+    radioClass: "iradio_flat-green",
+  });
+
+  $("#idDivFinalizarAvaliacao").html("Avaliação finalizada com sucesso!");
+
+  if (tipoFinalizacao === 1)
+    $("#idDivFinalizarAvaliacao").html(
+      "O tempo para realização da prova expirou.<br/> A avaliação foi finalizada automaticamente."
+    );
+
+  configMensagemLimiteDeTempo = $("#configMensagemLimiteDeTempo").val();
+
+  configContagemRegressiva = $("#configContagemRegressiva").val();
+  configContagemProgressiva = $("#configContagemProgressiva").val();
+  configLimitouTempoDataHoraAtividade = $(
+    "#configLimitouTempoDataHoraAtividade"
+  ).val();
+  configNavegacaoRestritiva = $("#configNavegacaoRestritiva").val();
+  configTempoSegundos = parseInt($("#configTempoSegundos").val());
+  configTotalSegundosUtilizados = parseInt(
+    $("#configTotalSegundosUtilizados").val()
+  );
+  configTempo = $("#configTempo").val();
+  configTotalQuestoes = $("#configTotalQuestoes").val();
+  configUltimaQuestaoNaoRespondida = parseInt(
+    $("#configUltimaQuestaoNaoRespondida").val()
+  );
+  configIniciouAvaliacao = $("#configIniciouAvaliacao").val();
+  configMostrarFeedback = $("#configMostrarFeedback").val();
+  configRedacaoPrimeiro = $("#configRedacaoPrimeiro").val();
+
+  if (configFinalizouAvaliacao == "true" && configMostrarFeedback == "false") {
+    return;
+  }
+
+  var viewer = new Viewer(document.getElementById("prova"), {
+    inline: false,
+    viewed: function () {
+      //viewer.zoomTo(1);
+    },
+    tooltip: false,
+    interval: 0,
+    navbar: 0,
+    title: false,
+    toolbar: {
+      zoomIn: 1,
+      zoomOut: 1,
+      oneToOne: 0,
+      reset: 1,
+      prev: 0,
+      play: 0,
+      //play: {
+      //    show: 4
+      //},
+      next: 0,
+      rotateLeft: 0,
+      rotateRight: 0,
+      flipHorizontal: 0,
+      flipVertical: 0,
+    },
+  });
+
+  $("#prova img").on("click", function () {
+    viewer["show"](this);
+  });
+
+  retirarElementosProva("#prova");
+
+  atualizarWizardSelecionado();
+
+  $("#questao_" + configUltimaQuestaoNaoRespondida).show();
+
+  if (configFinalizouAvaliacao == "true") {
+    $(".alternativa").iCheck("disable");
+  } else {
+    $(".alternativa").on("ifChecked", function (event) {
+      var questao = parseInt($(event.target).attr("questao"));
+      var afirmativa = parseInt($(event.target).attr("alternativa"));
+      var sequencia = parseInt($(event.target).attr("sequencia"));
+
+      $.ajax({
+        data: { numeroQuestao: questao, sequenciaAfirmativa: afirmativa },
+        type: "POST",
+        url: base + "/Aplicacao/SalvarResposta",
+        datatype: "json",
+        success: function (data) {
+          notificar(data.message, data.type);
+          if (data.type == "success") {
+            $(".wizardStep li:eq(" + (sequencia - 1) + ")").addClass("active");
+          } else {
+            $(event.target).iCheck("uncheck");
+          }
+        },
+        error: function (request, status, error) {
+          alert(request.responseText);
+          $(event.target).iCheck("uncheck");
+        },
+      });
+    });
+  }
+
+  $(".btnAnterior").on("click", function () {
+    if ($("#tempoFinalizado").val() === "S")
+      $("#btnFinalizarChamarResumo").click();
+    else {
+      anterior();
+    }
+  });
+
+  $(".btnProximo").on("click", function () {
+    if ($("#tempoFinalizado").val() === "S")
+      $("#btnFinalizarChamarResumo").click();
+    else {
+      proximo();
+    }
+  });
+
+  $(".btnFinalizar").on("click", function () {
+    finalizar(false, false, false, "", "");
+  });
+
+  $(".wizardStep > li").on("click", function () {
+    if ($("#tempoFinalizado").val() === "S") {
+      $("#btnFinalizarChamarResumo").click();
+      return;
+    }
+
+    if (
+      configNavegacaoRestritiva == "false" ||
+      configFinalizouAvaliacao == "true"
+    ) {
+      var id = parseInt($(this).attr("data_id"));
+      var isRedacaoClicado = $("#questao_" + id).attr("redacao");
+
+      var isRedacao = $("#questao_" + configUltimaQuestaoNaoRespondida).attr(
+        "redacao"
+      );
+
+      if (
+        configFinalizouAvaliacao == "false" &&
+        configRedacaoPrimeiro == "true" &&
+        isRedacaoClicado == "true" &&
+        configUltimaQuestaoNaoRespondida != id
+      ) {
+        notificar(
+          "Não é possível retornar na redação, ela já foi respondida.",
+          "warning"
+        );
+      } else if (
+        configFinalizouAvaliacao == "false" &&
+        configRedacaoPrimeiro == "true" &&
+        isRedacao == "true"
+      ) {
+        notificar(
+          "É necessário responder a redação para processeguir com as outras questões",
+          "warning"
+        );
+      } else {
+        salvarRespostaDiscursivaMudancaDeQuestao(
+          configUltimaQuestaoNaoRespondida,
+          function () {
+            $("#questao_" + configUltimaQuestaoNaoRespondida).hide();
+            configUltimaQuestaoNaoRespondida = id;
+            $("#questao_" + configUltimaQuestaoNaoRespondida).show();
+            atualizarWizardSelecionado();
+          }
+        );
+      }
+    }
+  });
+
+  if (
+    configNavegacaoRestritiva == "true" &&
+    configFinalizouAvaliacao == "false"
+  ) {
+    $(".wizardStep > li").css("cursor", "text");
+    $(".btnAnterior").hide();
+  }
+
+  if (configFinalizouAvaliacao == "false") {
+    timerGlobal.start({
+      startValues: { seconds: configTotalSegundosUtilizados },
+    });
+    // timerGlobal.addEventListener("minutesUpdated", function (e) {
+    //   $.ajax({
+    //     data: { segundos: timerGlobal.getTotalTimeValues().seconds },
+    //     type: "POST",
+    //     url: base + "/Aplicacao/AtualizarSegundos",
+    //     datatype: "json",
+    //     success: function (data) {},
+    //   });
+    // });
+
+    if (configContagemProgressiva == "true") {
+      var timer = new Timer();
+      timer.start({ startValues: { seconds: configTotalSegundosUtilizados } });
+      timer.addEventListener("secondsUpdated", function (e) {
+        if ($("#tempoFinalizado").val() != "S") {
+          $("#tempoApresentacao").html(timer.getTimeValues().toString());
+        }
+      });
+
+      $("#divTempo span[for='tempoApresentacao'] b").html("TEMPO DECORRIDO");
+      $("#divTempo span[for='tempoApresentacao']").show();
+      $("#divTempoExibicao").hide();
+      $("#divTempoExibicao").css("width", 0);
+      $("#idEstaExibindo2Contador").val("false");
+
+      if (configLimitouTempoDataHoraAtividade == "true") {
+        mostrarModalTempoAtividadeDeProva();
+        contagemRegressiva(2);
+        $("#divTempoExibicao").show();
+        $("#divTempoExibicao").css("width", "24%");
+        $("#idEstaExibindo2Contador").val("true");
+      }
+      // else
+      //   timer.addEventListener("secondsUpdated", function (e) {
+      //     // if ($("#tempoFinalizado").val() != "S") {
+      //     //   $("#tempo").html(timer.getTimeValues().toString());
+      //     // }
+      //   });
+    }
+
+    if (configContagemRegressiva == "true" && configTempoSegundos != 0) {
+      if (configLimitouTempoDataHoraAtividade == "true") {
+        mostrarModalTempoAtividadeDeProva();
+      }
+      contagemRegressiva(1);
+    }
+  } else {
+    $("#tempo").remove();
+    $("#tempoApresentacao").remove();
+  }
+
+  $(".textarea_discursiva").each(function (e) {
+    atualizarIndicadorLinhasQuestaoDiscursiva($(this).attr("sequencia"));
+  });
+}
+
+function contagemRegressiva(origem) {
+  var timer = new Timer();
+  var segundosRegressivo = configTempoSegundos;
+  if (origem == 1)
+    segundosRegressivo = configTempoSegundos - configTotalSegundosUtilizados;
+
+  if (segundosRegressivo <= 0) {
+    segundosRegressivo = 1;
+  }
+
+  timer.start({
+    countdown: true,
+    startValues: { seconds: segundosRegressivo },
+    callback: function (timer) {
+      var segundosRestantes = timer.getTotalTimeValues().seconds;
+      var percentual =
+        (segundosRestantes / parseFloat(configTempoSegundosOriginal)) * 100;
+
+      if ((percentual <= 10 && percentual > 0) || segundosRestantes < 600) {
+        mostrarMensagemTempoFaltante(origem);
+      }
+    },
+  });
+
+  if (origem == 1) {
+    $("#tempoApresentacao").html(configTempo);
+    timer.addEventListener("secondsUpdated", function (e) {
+      if ($("#tempoFinalizado").val() != "S") {
+        $("#tempoApresentacao").html(timer.getTimeValues().toString());
+      }
+    });
+    $("#divTempo span[for='tempoApresentacao'] b").html("TEMPO RESTANTE");
+    $("#divTempo span[for='tempoApresentacao']").show();
+    $("#tempo").html(configTempo);
+    timer.addEventListener("secondsUpdated", function (e) {
+      if ($("#tempoFinalizado").val() != "S") {
+        $("#tempo").html(timer.getTimeValues().toString());
+      }
+    });
+  } else {
+    $("#tempo").html(configTempo);
+    $("#divTempo span[for='tempo']").show();
+    timer.addEventListener("secondsUpdated", function (e) {
+      if ($("#tempoFinalizado").val() != "S") {
+        $("#tempo").html(timer.getTimeValues().toString());
+      }
+    });
+  }
+
+  timer.addEventListener("targetAchieved", function (e) {
+    // Fernando teste do modal efetuar o controle
+    $("#tempoFinalizado").val("S");
+    $(".alternativa").attr("disabled", true);
+
+    $("#btnFinalizarChamarResumo").click();
+    //finalizar(true, true, false, "Syst", "Syst");
+  });
+}
+
+function mostrarMensagemTempoFaltante(origem) {
+  if (mostrarAvisoTempo == true) {
+    mostrarAvisoTempo = false;
+    // alerta(
+    //   "Faltam apenas 10% do tempo restante. Após o encerramento do tempo, você não poderá efetuar alterações na sua prova."
+    // );
+    var mensagemTempoRestante =
+      "Faltam apenas 10% do tempo restante. Após o encerramento do tempo, você não poderá efetuar alterações na sua prova.";
+    if (origem == 2)
+      mensagemTempoRestante =
+        "Faltam menos de 10 minutos para finalizar a prova. Após o encerramento do tempo, você não poderá efetuar alterações na sua prova.";
+    notificar(mensagemTempoRestante, "warning");
+  }
+
+  if (origem == 2) {
+    $("#tempo.tempoExibicao").css("color", "red");
+  } else {
+    $("#tempoApresentacao.tempoExibicao").css("color", "red");
+  }
+}
+
+function retirarElementosProva(elementBase) {
+  $(elementBase + " a").replaceWith(function () {
+    return $("<span>" + $(this).html() + "</span>");
+  });
+  $(elementBase + ' [style*="font-size"]').css("font-size", "");
+  $(elementBase + ' [style*="FONT-SIZE"]').css("font-size", "");
+  $(elementBase + ' [style*="font-family"]').css("font-family", "");
+  $(elementBase + ' [style*="FONT-FAMILY"]').css("font-family", "");
+  $(elementBase + ' [style*="font-size-adjust"]').css("font-size-adjust", "");
+  $(elementBase + ' [style*="FONT-SIZE-ADJUST"]').css("font-size-adjust", "");
+}
+
+function atualizarWizardSelecionado() {
+  clearInterval(configAutoSaveQuestaoDiscursiva);
+
+  var isQuestaoDiscursiva = $(
+    "#questao_" + configUltimaQuestaoNaoRespondida
+  ).attr("discursiva");
+
+  $(".wizardStep li").removeClass("selected");
+  $(
+    ".wizardStep li:eq(" + (configUltimaQuestaoNaoRespondida - 1) + ")"
+  ).addClass("selected");
+
+  if (isQuestaoDiscursiva == "true") {
+    if (configFinalizouAvaliacao == "false") {
+      configAutoSaveQuestaoDiscursiva = setInterval(function () {
+        salvarRespostaDiscursiva(
+          configUltimaQuestaoNaoRespondida,
+          false,
+          false,
+          null
+        );
+      }, 60000);
+    }
+    atualizarIndicadorLinhasQuestaoDiscursiva(configUltimaQuestaoNaoRespondida);
+  }
+}
+
+function proximo() {
+  var isRedacao = $("#questao_" + configUltimaQuestaoNaoRespondida).attr(
+    "redacao"
+  );
+
+  if (
+    configRedacaoPrimeiro == "true" &&
+    isRedacao == "true" &&
+    configFinalizouAvaliacao == "false"
+  ) {
+    var textoDiscursiva = $(
+      "#questaodiscursiva_" + configUltimaQuestaoNaoRespondida
+    ).html();
+    if (textoDiscursiva == null || textoDiscursiva.trim() == "") {
+      aviso(
+        "<b>Você não respondeu a redação. É necessário responder para prosseguir.</b>",
+        function () {}
+      );
+      return;
+    } else {
+      avisoHtml(
+        "Atenção",
+        "<b>Após continuar, não será mais possível alterar essa redação. Deseja realmente continuar?</b>",
+        "Sim",
+        "Não",
+        acaoProximo,
+        function () {}
+      );
+      return;
+    }
+  }
+
+  if (
+    configNavegacaoRestritiva == "true" &&
+    configFinalizouAvaliacao == "false"
+  ) {
+    var isQuestaoDiscursiva = $(
+      "#questao_" + configUltimaQuestaoNaoRespondida
+    ).attr("discursiva");
+
+    if (isQuestaoDiscursiva == "true") {
+      var textoDiscursiva = $(
+        "#questaodiscursiva_" + configUltimaQuestaoNaoRespondida
+      ).html();
+      if (textoDiscursiva == null || textoDiscursiva.trim() == "") {
+        avisoHtml(
+          "Atenção",
+          "<b>Você não respondeu essa questão. Após continuar, não será mais possível responder essa questão. Deseja realmente continuar sem marcar uma questão?</b>",
+          "Sim",
+          "Não",
+          acaoProximo,
+          function () {}
+        );
+        return;
+      }
+    } else {
+      var questaoIsChecked = $(
+        "#questao_" + configUltimaQuestaoNaoRespondida + " .alternativa"
+      ).is(":checked");
+      if (questaoIsChecked == false) {
+        avisoHtml(
+          "Atenção",
+          "<b>Você não marcou uma alternativa. Após continuar, não será mais possível responder essa questão. Deseja realmente continuar sem marcar uma questão?</b>",
+          "Sim",
+          "Não",
+          acaoProximo,
+          function () {}
+        );
+        return;
+      }
+    }
+
+    if (mostrarAvisoAvaliacaoRestritiva) {
+      avisoHtml(
+        "Aviso",
+        "Essa avaliação não permite retornar em uma questão. Após continuar, não será mais possível responder essa questão. Deseja realmente continuar?",
+        "Sim",
+        "Não",
+        acaoProximo,
+        function () {}
+      );
+    } else {
+      acaoProximo();
+    }
+
+    mostrarAvisoAvaliacaoRestritiva = false;
+  } else {
+    acaoProximo();
+  }
+}
+
+function acaoProximo() {
+  salvarRespostaDiscursivaMudancaDeQuestao(
+    configUltimaQuestaoNaoRespondida,
+    function () {
+      $("#questao_" + configUltimaQuestaoNaoRespondida).hide();
+      configUltimaQuestaoNaoRespondida = configUltimaQuestaoNaoRespondida + 1;
+      $("#questao_" + configUltimaQuestaoNaoRespondida).show();
+      atualizarWizardSelecionado();
+    }
+  );
+}
+
+function finalizar(
+  continuar,
+  tempoExpirado,
+  utilizaResumo,
+  chaveEnvio,
+  referenciaChave
+) {
+  salvarRespostaDiscursivaMudancaDeQuestao(
+    configUltimaQuestaoNaoRespondida,
+    function () {
+      var tipoFinalizacao = 0;
+      if (tempoExpirado == true) {
+        tipoFinalizacao = 1;
+        $("#myModal").modal("toggle");
+        aviso(
+          "O Tempo para realização da prova expirou. A avaliação foi finalizada automaticamente."
+        );
+      }
+
+      $.blockUI({ message: "<h1>Enviando as respostas. Aguarde...</h1>" });
+
+      $.ajax({
+        data: {
+          continuar: continuar,
+          segundos: timerGlobal.getTotalTimeValues().seconds,
+          utilizaResumo: utilizaResumo,
+          chaveEnvio: chaveEnvio,
+          referenciaChave: referenciaChave,
+        },
+        type: "POST",
+        url: base + "/Aplicacao/Finalizar",
+        datatype: "json",
+        success: function (data) {
+          finishLoading($("#btnFinalizar"));
+          if (utilizaResumo == true) {
+            if (data.type != "success") {
+              notificar(data.message, data.type);
+            }
+
+            if (data.type == "success") {
+              $("#myModal").modal("toggle");
+              configFinalizouAvaliacao = "true";
+              $("#configFinalizouAvaliacao").val(configFinalizouAvaliacao);
+              $("#avaliacao").load(base + "/aplicacao/avaliacao", function () {
+                $("#divTempo").hide();
+                $("#eye").hide();
+                $("#olho").hide();
+                $("#idDivCalculadora").hide();
+                $("#btnCalculadora").hide();
+
+                inicializarAvaliacao(tipoFinalizacao);
+              });
+            }
+          } else {
+            $("#myModal").modal("toggle");
+            if (data.type == "warning") {
+              avisoHtml(
+                "Aviso",
+                data.message,
+                "FINALIZAR AVALIAÇÃO",
+                "PERMANECER NA AVALIAÇÃO",
+                function () {
+                  finalizar(true, false);
+                },
+                function () {}
+              );
+            } else {
+              notificar(data.message, data.type);
+              if (data.type == "success") {
+                configFinalizouAvaliacao = "true";
+                $("#configFinalizouAvaliacao").val(configFinalizouAvaliacao);
+                $("#avaliacao").load(
+                  base + "/aplicacao/avaliacao",
+                  function () {
+                    inicializarAvaliacao(tipoFinalizacao);
+                  }
+                );
+              }
+            }
+          }
+          $.unblockUI();
+          initLoading($("#btnFinalizarChamarResumo"));
+        },
+        error: function (request, status, error) {
+          alert(request.responseText);
+          $.unblockUI();
+          finishLoading($("#btnFinalizarChamarResumo"));
+        },
+      });
+    }
+  );
+}
+
+function anterior() {
+  salvarRespostaDiscursivaMudancaDeQuestao(
+    configUltimaQuestaoNaoRespondida,
+    function () {
+      $("#questao_" + configUltimaQuestaoNaoRespondida).hide();
+      configUltimaQuestaoNaoRespondida = configUltimaQuestaoNaoRespondida - 1;
+      $("#questao_" + configUltimaQuestaoNaoRespondida).show();
+      atualizarWizardSelecionado();
+    }
+  );
+}
+
+function validarComeco() {
+  if ($("#liEntendi").is(":checked")) {
+    return true;
+  }
+  notificar(
+    "É necessário marcar a opção 'Li e Entendi' para começar.",
+    "warning"
+  );
+  return false;
+}
+
+function criarGraficoPizza(acertos, erros) {
+  const margin = 20;
+  const width = 320;
+  const height = 120;
+  var svg = dimple.newSvg("#graficoPizza", width, height);
+
+  var newData = [
+    { Nome: "Acertos", Quantidade: acertos },
+    { Nome: "Erros", Quantidade: erros },
+  ];
+  var myChart = new dimple.chart(svg, newData);
+  myChart.addMeasureAxis("p", "Quantidade");
+  myChart.addSeries("Nome", dimple.plot.pie);
+  myChart.addLegend(width - 5 * margin, margin, 90, 300, "left");
+
+  if (acertos >= erros) {
+    myChart.defaultColors = [
+      new dimple.color("#1ABB9C", "#1ABB9C", 1),
+      new dimple.color("#e15554", "#e15554", 1),
+    ];
+  } else {
+    myChart.defaultColors = [
+      new dimple.color("#e15554", "#e15554", 1),
+      new dimple.color("#1ABB9C", "#1ABB9C", 1),
+    ];
+  }
+
+  myChart.draw();
+}
+
+function mostrarModalTempoAtividadeDeProva() {
+  avisoComTitle(configMensagemLimiteDeTempo, "Atenção");
+}
+
+function mostrarFeedback(questao) {
+  $("#modalFeedback .modal-body").html(
+    $(".feedback_" + questao)
+      .clone()
+      .html()
+  );
+  $("#modalFeedback").modal("show");
+}
+
+function salvarRespostaDiscursivaMudancaDeQuestao(sequencia, callback) {
+  var isQuestaoDiscursiva = $(
+    "#questao_" + configUltimaQuestaoNaoRespondida
+  ).attr("discursiva");
+
+  if (isQuestaoDiscursiva == "true" && configFinalizouAvaliacao == "false") {
+    var finalizar =
+      configNavegacaoRestritiva == "true" || configRedacaoPrimeiro == "true";
+    salvarRespostaDiscursiva(sequencia, finalizar, true, callback);
+  } else {
+    callback();
+  }
+}
+
+function salvarRespostaDiscursiva(
+  sequencia,
+  finalizar,
+  notificarSalvar,
+  callback
+) {
+  var texto = $("#questaodiscursiva_" + sequencia).html();
+  var numeroQuestao = $("#questaodiscursiva_" + sequencia).attr("questao");
+
+  //var test = $("#canvas_discursiva_" + sequencia)[0];
+
+  //html2canvas(test).then(function (canvas) {
+  //    var canvasWidth = canvas.width;
+  //    var canvasHeight = canvas.height;
+  //    var img = Canvas2Image.convertToImage(canvas, canvasWidth, canvasHeight);
+
+  $.ajax({
+    data: { numeroQuestao: numeroQuestao, texto: texto, finalizar: finalizar },
+    type: "POST",
+    url: base + "/Aplicacao/SalvarRespostaDiscursiva",
+    datatype: "json",
+    success: function (data) {
+      if (notificarSalvar) {
+        notificar(data.message, data.type);
+
+        if (data.type == "success") {
+          if (data.param == "true") {
+            $(".wizardStep li:eq(" + (sequencia - 1) + ")").addClass("active");
+          } else {
+            $(".wizardStep li:eq(" + (sequencia - 1) + ")").removeClass(
+              "active"
+            );
+          }
+
+          var isRedacao = $(
+            "#questao_" + configUltimaQuestaoNaoRespondida
+          ).attr("redacao");
+
+          if (isRedacao == "true" && configRedacaoPrimeiro == "true") {
+            $(
+              "#questao_" +
+                (configUltimaQuestaoNaoRespondida + 1) +
+                " .btnAnterior"
+            ).hide();
+            $(
+              "#questaodiscursiva_" + (configUltimaQuestaoNaoRespondida + 1)
+            ).removeAttr("contenteditable");
+          }
+
+          callback();
+        }
+      }
+    },
+  });
+
+  //});
+}
+
+function irAvaliacao(id) {
+  window.location.href = base + "/Aplicacao/Iniciar/" + id;
+}
+
+function iniciarAvaliacao(id) {
+  window.location.href = base + "/Aplicacao/IniciarAvaliacao/" + id;
+}
+
+function autenticar(data) {
+  if (data.type == "success") {
+    window.location.href = base + "/Avaliacao/Index/";
+  } else {
+    notificar(data.message, data.type);
+    finishLoading($("#btnAcessar"));
+  }
+}
+
+function autenticarFicha(data) {
+  if (data.type == "success") {
+    window.location.href = base + "/Aplicacao/Inicio/";
+  } else {
+    notificar(data.message, data.type);
+  }
+}
+
+function atualizarIndicadorLinhasQuestaoDiscursiva(sequencia) {
+  var elem = document.getElementById("questaodiscursiva_" + sequencia);
+  var curStyle = elem.currentStyle || window.getComputedStyle(elem);
+  divheight = elem.offsetHeight;
+  var lineheight = parseInt(
+    $("#questaodiscursiva_" + sequencia).css("line-height"),
+    10
+  );
+  var count = Math.round(divheight / lineheight);
+
+  var rows = $("#questaodiscursiva_" + sequencia).attr("rows");
+
+  if (rows > count) {
+    count = rows;
+    $("#questaodiscursiva_" + sequencia).css("min-height", rows * lineheight);
+  }
+
+  $("#linhas_questao_" + sequencia).html("");
+  for (var i = 1; i <= count; i++) {
+    if (i > rows) {
+      $("#linhas_questao_" + sequencia).append(
+        "<b><p style='padding:0px 5px 0px 0px;margin:0px;font-size:11.3px;color:red'>" +
+          i +
+          "</p></b>"
+      );
+    } else {
+      $("#linhas_questao_" + sequencia).append(
+        "<p style='padding:0px 5px 0px 0px;margin:0px;font-size:11.3px'>" +
+          i +
+          "</p>"
+      );
+    }
+  }
+}
