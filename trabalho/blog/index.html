@@ -181,8 +181,8 @@
             </h5>
           </div>
           <div class="col-md-4" style="display: flex; flex-direction: row; justify-content: center; align-items: center">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/1/19/10_Brazil_real_First_Obverse.jpg" width="200">        
-            <img src="https://upload.wikimedia.org/wikipedia/commons/2/26/10_Brazil_real_First_Reverse.jpg" width="200">                  
+            <img src="https://upload.wikimedia.org/wikipedia/commons/1/19/10_Brazil_real_First_Obverse.jpg" onclick="image(this)" width="200">        
+            <img src="https://upload.wikimedia.org/wikipedia/commons/2/26/10_Brazil_real_First_Reverse.jpg" onclick="image(this)" width="200">                  
           </div>
           <div class="col-md-8" >
             <p>Frente: Efígie da República, interpretada como uma escultura. </p>
@@ -200,6 +200,13 @@
         <p>Helio Lidoni</p>
         <p>Victor Dos Santos</p>
       </footer>
+
+      <script type="text/javascript">
+        function image(img) {
+            var src = img.src;
+            window.open(src);
+        }
+        </script>
     </div>
   </body>
 </html>
